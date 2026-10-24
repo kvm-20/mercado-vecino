@@ -21,7 +21,7 @@ tienen salida a internet ni son alcanzables desde fuera.
 ## Levantar el proyecto desde un clon limpio (4 comandos)
 
 ```bash
-git clone <URL-del-repositorio> mercado-vecino
+git clone https://github.com/kvm-20/mercado-vecino.git mercado-vecino
 cd mercado-vecino
 sh scripts/preparar.sh        # crea .env y genera las contraseñas en secrets/
 docker compose up -d --build
