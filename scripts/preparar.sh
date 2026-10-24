@@ -13,7 +13,7 @@ for nombre in db_admin_password db_app_password redis_password; do
   archivo="secrets/$nombre.txt"
   if [ ! -f "$archivo" ]; then
     # hex: sin caracteres especiales que den problemas en URLs o configuraciones
-    openssl rand -hex 24 > "$archivo"
+    openssl rand -hex 24 | tr -d "\r\n" > "$archivo"
     echo "Generado $archivo"
   fi
 done
