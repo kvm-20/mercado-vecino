@@ -1,0 +1,8 @@
+# Solo para desarrollo: Compose lo fusiona automáticamente con compose.yaml.
+# En producción se ignora con: docker compose -f compose.yaml up -d
+services:
+  api:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./api/app:/app/app
+    read_only: false

@@ -1,0 +1,112 @@
+name: mercado-vecino
+
+services:
+  # ---------------- Base de datos ----------------
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:?Defina DB_NAME en .env}
+      # Superusuario: solo lo usan los scripts de inicio, nunca la API
+      POSTGRES_USER: ${DB_ADMIN_USER:?Defina DB_ADMIN_USER en .env}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin_password
+      # Rol de la aplicación que crea db/init/02_rol_app.sh
+      APP_DB_USER: ${DB_APP_USER:?Defina DB_APP_USER en .env}
+    secrets: [db_admin_password, db_app_password]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---------------- Caché (reto integrador) ----------------
+  redis:
+    image: redis:7.4-alpine
+    user: redis
+    # Redis no lee *_FILE de forma nativa: se arma un archivo de configuración
+    # en /tmp (memoria) con la contraseña del secreto y se arranca con él.
+    # Así la contraseña no aparece en variables de entorno ni en argumentos.
+    command:
+      - sh
+      - -c
+      - |
+        umask 077
+        printf 'requirepass %s\nappendonly yes\n' "$$(cat /run/secrets/redis_password)" > /tmp/redis.conf
+        exec redis-server /tmp/redis.conf
+    secrets: [redis_password]
+    volumes:
+      - redisdata:/data
+    networks: [backend]
+    healthcheck:
+      # REDISCLI_AUTH evita poner la contraseña como argumento de redis-cli
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  # ---------------- API ----------------
+  api:
+    build:
+      context: ./api
+      target: runtime
+    image: mercado-api:1.0
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_APP_USER}
+      DB_PASSWORD_FILE: /run/secrets/db_app_password
+      REDIS_HOST: redis
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+    # La API NO recibe la contraseña del superusuario
+    secrets: [db_app_password, redis_password]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [backend, frontend]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  # ---------------- Frontend ----------------
+  web:
+    build: ./frontend
+    image: mercado-web:1.0
+    ports:
+      - "8080:8080"   # único puerto publicado de todo el stack
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [frontend]
+    restart: unless-stopped
+
+networks:
+  frontend:
+  backend:
+    internal: true   # sin salida a internet ni puertos publicados
+
+volumes:
+  pgdata:
+  redisdata:
+
+secrets:
+  db_admin_password:
+    file: ./secrets/db_admin_password.txt
+  db_app_password:
+    file: ./secrets/db_app_password.txt
+  redis_password:
+    file: ./secrets/redis_password.txt

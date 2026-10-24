@@ -1,0 +1,13 @@
+# Configuración local y credenciales: nunca se versionan
+.env
+secrets/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Node
+node_modules/
+dist/
